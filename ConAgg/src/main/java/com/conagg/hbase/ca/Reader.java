@@ -91,6 +91,26 @@ public class Reader implements Runnable {
 	 * Read data from datasource
 	 */
 	public void readFromSource() {
+		try {
+			if (hour == null && date != null)
+				readDayData();
+			else if (date != null && hour != null)
+				readHourData();
+			else
+				throw new Exception("Date and hour cannot be null");
+
+		} catch (Exception e) {
+			logger.error(e.toString());
+		}
+	}
+
+	private void readHourData() {
+		// TODO Auto-generated method stub
+
+	}
+
+	private void readDayData() {
+		// TODO Auto-generated method stub
 
 	}
 

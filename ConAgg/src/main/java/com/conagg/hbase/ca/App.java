@@ -7,7 +7,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.log4j.Logger;
 
 /**
@@ -21,10 +20,12 @@ import org.apache.log4j.Logger;
 public class App {
 	@SuppressWarnings({ "javadoc", "static-access" })
 	public static void main(String[] args) {
-		Logger logger = Logger.getLogger(App.class.getName());
-		logger.info("Starting application");
+		Logger logger = Logger.getLogger("App");
 		long start = System.currentTimeMillis();
 		String date = "", hour = "";
+
+		logger.info("Starting Continuous Aggregator");
+
 		Options options = new Options();
 		Option dateOption =
 				OptionBuilder.withArgName("property=value").hasArgs(2)
@@ -65,7 +66,13 @@ public class App {
 			logger.info("Date: " + date + " Hour: " + hour + " in "
 					+ (System.currentTimeMillis() - start) + " ms");
 
-		} catch (ParseException e) {
+			// Initialise and start Reader
+			Reader reader = new Reader();
+			reader.init();
+			Thread readerThread = new Thread(reader);
+			readerThread.start();
+
+		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
