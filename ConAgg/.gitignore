@@ -1,0 +1,7 @@
+#Eclipse Config
+.classpath
+.project
+.settings/
+
+#Logs
+*.log
