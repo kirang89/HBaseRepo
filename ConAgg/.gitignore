@@ -5,3 +5,9 @@
 
 #Logs
 *.log
+
+#Maven Target
+classes
+maven-archiver
+surefire-reports
+test-classes
