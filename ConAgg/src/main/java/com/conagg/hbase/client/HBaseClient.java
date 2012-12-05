@@ -13,6 +13,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.commons.configuration.Configuration;
+import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.HTablePool;
@@ -27,10 +30,14 @@ import org.apache.hadoop.hbase.filter.QualifierFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.filter.ValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
 
 import com.conagg.constants.Constants;
 import com.conagg.hbase.ds.Field;
+import com.conagg.hbase.ds.Row;
 import com.conagg.hbase.utils.RowKeyGenerator;
+import com.conagg.utils.ConAggUtils;
 
 /**
  * HBase client wrapper
@@ -44,73 +51,69 @@ public class HBaseClient {
 	private org.apache.hadoop.conf.Configuration conf = null;
 	private HTable table;
 	private HTablePool pool;
-	private String zcport = "";
+	private String zkClientPort = "";
+	private String zkQuorum = "";
+	private String zkZnodeParent = "";
 	private Scan scan;
-	@SuppressWarnings("unused")
 	private String tableName;
-	private String family;
-	private String znodeParent;
+	private String columnFamily;
 	private int rowKeyLength;
 	private static List<Filter> filters = new ArrayList<Filter>();
+	private static Configuration sourceConfig;
+	private static Logger logger;
 
 	/**
-	 * Set Zookeeper Client Port
-	 * 
-	 * @param port
-	 *            Zookeeper client port
+	 * Load HBase configuration from source-sink.properties
 	 */
-	public void setZookeeperClientPort(String port) {
-		zcport = port;
-	}
+	public void loadConfiguration() {
+		try {
+			logger =
+					ConAggUtils.createLogger("HBase",
+							Constants.SOURCE_SINK_LOG_DIR, Level.ALL);
+			sourceConfig =
+					new PropertiesConfiguration(
+							Constants.SOURCE_SINK_PROPERTIES);
 
-	/**
-	 * Set column family
-	 * 
-	 * @param family
-	 *            column family name
-	 */
-	public void setColumnFamily(String family) {
-		this.family = family;
-	}
-
-	/**
-	 * Set zookeeper znode parent
-	 * 
-	 * @param parent
-	 */
-	public void setZookeeperZnodeParent(String parent) {
-		this.znodeParent = parent;
+			this.zkQuorum =
+					sourceConfig.getProperty(Constants.SOURCE_ZK_QUORUM_KEY)
+							.toString();
+			this.zkClientPort =
+					sourceConfig
+							.getProperty(Constants.SOURCE_ZK_CLIENTPORT_KEY)
+							.toString();
+			this.zkZnodeParent =
+					sourceConfig.getProperty(
+							Constants.SOURCE_ZK_ZNODEPARENT_KEY).toString();
+			this.tableName =
+					sourceConfig.getProperty(Constants.SOURCE_HTABLE_KEY)
+							.toString();
+			this.columnFamily =
+					sourceConfig.getProperty(Constants.SOURCE_HCF_KEY)
+							.toString();
+		} catch (ConfigurationException e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
 	 * Initialise HBase Connection
 	 * 
-	 * @param host
-	 *            host name
-	 * @param port
-	 *            port
-	 * @param tableName
-	 *            table name
 	 * @throws IOException
 	 */
-	public void initConnection(String host, String port, String tableName)
-			throws IOException {
-		this.tableName = tableName;
-
+	public void initConnection() throws IOException {
 		conf = HBaseConfiguration.create();
-		// conf.set(Constants.HBASE_MASTER, host + ":" +
-		// port);
-		conf.set(Constants.HBASE_CONFIGURATION_ZOOKEEPER_QUORUM, host);
-		conf.set(Constants.HBASE_CONFIGURATION_ZOOKEEPER_CLIENTPORT, zcport);
+		conf.set(Constants.HBASE_CONFIGURATION_ZOOKEEPER_QUORUM, this.zkQuorum);
+		conf.set(Constants.HBASE_CONFIGURATION_ZOOKEEPER_CLIENTPORT,
+				this.zkClientPort);
 		conf.set(Constants.HBASE_CONFIGURATION_ZOOKEEPER_ZNODE_PARENT,
-				znodeParent);
+				this.zkZnodeParent);
 		try {
 			pool = new HTablePool(conf, 100);
 			table = (HTable) pool.getTable(tableName);
-			table.setAutoFlush(true);
-			// table = new HTable(conf, tableName);
+			table.setAutoFlush(Boolean.parseBoolean(sourceConfig.getProperty(
+					Constants.SOURCE_AUTOFLUSH_KEY).toString()));
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.error(e.getLocalizedMessage(), e);
 		}
 	}
 
@@ -148,8 +151,9 @@ public class HBaseClient {
 			byte[] qualifier = (byte[]) pairs.getKey();
 			byte[] value = (byte[]) pairs.getValue();
 			Filter filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.EQUAL, value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.EQUAL, value);
 
 			filters.add(filter1);
 		}
@@ -169,30 +173,34 @@ public class HBaseClient {
 
 		if (comparator.trim().equals("<"))
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.LESS, value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.LESS, value);
 		else if (comparator.trim().equals("="))
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.EQUAL, value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.EQUAL, value);
 		else if (comparator.trim().equals(">"))
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.GREATER, value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.GREATER, value);
 		else if (comparator.trim().equals("<="))
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier,
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
 							CompareFilter.CompareOp.GREATER_OR_EQUAL, value);
 		else if (comparator.trim().equals(">="))
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.LESS_OR_EQUAL,
-							value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.LESS_OR_EQUAL, value);
 		else
 			filter1 =
-					new SingleColumnValueFilter(Bytes.toBytes(this.family),
-							qualifier, CompareFilter.CompareOp.NO_OP, value);
+					new SingleColumnValueFilter(
+							Bytes.toBytes(this.columnFamily), qualifier,
+							CompareFilter.CompareOp.NO_OP, value);
 
 		filters.add(filter1);
 
@@ -376,6 +384,10 @@ public class HBaseClient {
 		double newVal = (double) (d + tempVal);
 
 		return newVal;
+	}
+
+	public List<Row> getDataSet() {
+		return null;
 	}
 
 	/**
